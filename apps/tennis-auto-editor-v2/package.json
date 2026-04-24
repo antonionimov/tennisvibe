@@ -1,0 +1,49 @@
+{
+  "name": "tennis-auto-editor-v2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "prepare:runtime": "bash ./scripts/prepare-runtime.sh",
+    "prepare:embedded-python:linux": "bash ./scripts/prepare-embedded-python-linux.sh",
+    "prepare:embedded-python:mac": "bash ./scripts/prepare-embedded-python-macos.sh",
+    "prepare:embedded-python:windows": "bash ./scripts/prepare-embedded-python-windows.sh",
+    "prepare:python-vendor": "bash ./scripts/prepare-python-vendor.sh",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:bundle:mac": "tauri build --bundles dmg",
+    "tauri:bundle:mac:standalone": "bash ./scripts/build-standalone-macos.sh",
+    "tauri:bundle:windows": "tauri build --bundles nsis",
+    "tauri:bundle:windows:standalone": "bash ./scripts/build-standalone-windows.sh",
+    "tauri:bundle:ubuntu": "tauri build --bundles deb",
+    "tauri:bundle:ubuntu:standalone": "bash ./scripts/build-standalone-ubuntu.sh"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@tailwindcss/vite": "^4.1.13",
+    "@tauri-apps/cli": "^2.9.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "tailwindcss": "^4.1.13",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.0",
+    "vite": "^8.0.4"
+  }
+}
