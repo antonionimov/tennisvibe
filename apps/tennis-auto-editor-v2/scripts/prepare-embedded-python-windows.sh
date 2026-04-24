@@ -34,7 +34,12 @@ with zipfile.ZipFile(archive) as zf:
 PY
     SOURCE_DIR="$TEMP_EXTRACT_DIR"
   else
-    tar -xzf "$SOURCE_INPUT" -C "$TEMP_EXTRACT_DIR"
+    python3 - <<'PY' "$SOURCE_INPUT" "$TEMP_EXTRACT_DIR"
+import sys, tarfile
+archive, dest = sys.argv[1], sys.argv[2]
+with tarfile.open(archive, 'r:gz') as tf:
+    tf.extractall(dest)
+PY
     SOURCE_DIR="$TEMP_EXTRACT_DIR/python"
   fi
 fi
