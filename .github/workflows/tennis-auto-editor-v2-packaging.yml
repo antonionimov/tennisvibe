@@ -94,7 +94,9 @@ jobs:
         run: |
           export TENNIS_VENDOR_PYTHON_BIN=python
           export TENNIS_STANDALONE_FFMPEG_BIN="$(command -v ffmpeg || command -v ffmpeg.exe)"
+          export TENNIS_STANDALONE_FFPROBE_BIN="$(command -v ffprobe || command -v ffprobe.exe)"
           echo "Using ffmpeg at: $TENNIS_STANDALONE_FFMPEG_BIN"
+          echo "Using ffprobe at: $TENNIS_STANDALONE_FFPROBE_BIN"
           ${{ matrix.bundle_command }}
 
       - name: Upload bundle artifact

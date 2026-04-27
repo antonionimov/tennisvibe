@@ -12,10 +12,17 @@ if [[ ! -f "$ROOT_DIR/runtime/bin/ffmpeg.exe" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$ROOT_DIR/runtime/bin/ffprobe.exe" ]]; then
+  echo "[standalone-windows] missing runtime/bin/ffprobe.exe" >&2
+  exit 1
+fi
+
 if [[ ! -f "$ROOT_DIR/runtime/python-home/python.exe" && ! -f "$ROOT_DIR/runtime/python-home/bin/python.exe" ]]; then
   echo "[standalone-windows] embedded Python not staged yet." >&2
   echo "Run: TENNIS_EMBEDDED_PYTHON_WINDOWS_ROOT=/path/to/python-embed npm run prepare:embedded-python:windows" >&2
   exit 1
 fi
+
+bash ./scripts/check-runtime-bundle.sh windows
 
 npm run tauri:bundle:windows

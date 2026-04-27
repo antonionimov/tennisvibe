@@ -12,10 +12,17 @@ if [[ ! -x "$ROOT_DIR/runtime/bin/ffmpeg" ]]; then
   exit 1
 fi
 
+if [[ ! -x "$ROOT_DIR/runtime/bin/ffprobe" ]]; then
+  echo "[standalone-ubuntu] missing runtime/bin/ffprobe" >&2
+  exit 1
+fi
+
 if [[ ! -x "$ROOT_DIR/runtime/python-home/bin/python3" && ! -x "$ROOT_DIR/runtime/python-home/bin/python" ]]; then
   echo "[standalone-ubuntu] embedded Python not staged yet." >&2
   echo "Run: TENNIS_EMBEDDED_PYTHON_LINUX_ROOT=/path/to/python-home npm run prepare:embedded-python:linux" >&2
   exit 1
 fi
+
+bash ./scripts/check-runtime-bundle.sh linux
 
 npm run tauri:bundle:ubuntu

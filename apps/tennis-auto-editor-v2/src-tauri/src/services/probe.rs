@@ -38,7 +38,7 @@ pub fn probe_video(video_path: &Path) -> Result<ProbeRecord, String> {
         ])
         .arg(video_path)
         .output()
-        .map_err(|error| format!("调用 ffprobe 失败，请确认开发机已安装 ffprobe: {error}"))?;
+        .map_err(|error| format!("调用 ffprobe 失败：安装包内置 ffprobe 缺失或无法执行，且系统 PATH 中也未找到 ffprobe: {error}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

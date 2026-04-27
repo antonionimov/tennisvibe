@@ -56,6 +56,17 @@ pub fn bundled_ffmpeg_bin(app: &AppHandle) -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.exists())
 }
 
+pub fn bundled_ffprobe_bin(app: &AppHandle) -> Option<PathBuf> {
+    let runtime_dir = bundled_runtime_root(app)?;
+    let candidates = if cfg!(target_os = "windows") {
+        vec![runtime_dir.join("bin/ffprobe.exe"), runtime_dir.join("ffmpeg/ffprobe.exe")]
+    } else {
+        vec![runtime_dir.join("bin/ffprobe"), runtime_dir.join("ffmpeg/ffprobe")]
+    };
+
+    candidates.into_iter().find(|path| path.exists())
+}
+
 pub fn projects_root(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()

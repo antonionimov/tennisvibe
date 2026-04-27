@@ -668,7 +668,7 @@ pub fn extract_video_thumbnail_data_url(input_path: &Path, seek_sec: f64) -> Res
     let output = Command::new(&ffmpeg_binary)
         .args(&args)
         .output()
-        .map_err(|error| format!("调用 ffmpeg 失败，请确认开发机已安装 ffmpeg: {error}"))?;
+        .map_err(|error| format!("调用 ffmpeg 失败：安装包内置 ffmpeg 缺失或无法执行，且系统 PATH 中也未找到 ffmpeg: {error}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -698,7 +698,7 @@ fn run_ffmpeg(args: &[String]) -> Result<(), String> {
     let output = Command::new(&ffmpeg_binary)
         .args(args)
         .output()
-        .map_err(|error| format!("调用 ffmpeg 失败，请确认开发机已安装 ffmpeg: {error}"))?;
+        .map_err(|error| format!("调用 ffmpeg 失败：安装包内置 ffmpeg 缺失或无法执行，且系统 PATH 中也未找到 ffmpeg: {error}"))?;
 
     if output.status.success() {
         return Ok(());
@@ -738,7 +738,7 @@ where
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("调用 ffmpeg 失败，请确认开发机已安装 ffmpeg: {error}"))?;
+        .map_err(|error| format!("调用 ffmpeg 失败：安装包内置 ffmpeg 缺失或无法执行，且系统 PATH 中也未找到 ffmpeg: {error}"))?;
 
     let stdout = child
         .stdout

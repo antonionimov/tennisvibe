@@ -9,6 +9,7 @@ RUNTIME_VENDOR_DIR="$RUNTIME_PYTHON_DIR/vendor"
 DEFAULT_SOURCE_PYTHON_ROOT=$(cd "$ROOT_DIR/../tennis-auto-editor/python" 2>/dev/null && pwd || true)
 SOURCE_PYTHON_ROOT=${TENNIS_STANDALONE_SOURCE_PYTHON_ROOT:-$DEFAULT_SOURCE_PYTHON_ROOT}
 FFMPEG_BIN=${TENNIS_STANDALONE_FFMPEG_BIN:-$(command -v ffmpeg || true)}
+FFPROBE_BIN=${TENNIS_STANDALONE_FFPROBE_BIN:-$(command -v ffprobe || true)}
 PYTHON_BIN=${TENNIS_STANDALONE_PYTHON_BIN:-}
 RUNTIME_PROFILE=${TENNIS_STANDALONE_RUNTIME_PROFILE:-audio-only}
 
@@ -96,6 +97,13 @@ if [[ -n "$FFMPEG_BIN" && -f "$FFMPEG_BIN" ]]; then
   echo "[prepare-runtime] copied ffmpeg -> $RUNTIME_BIN_DIR/$(basename "$FFMPEG_BIN")"
 else
   echo "[prepare-runtime] ffmpeg not copied. Set TENNIS_STANDALONE_FFMPEG_BIN if needed."
+fi
+
+if [[ -n "$FFPROBE_BIN" && -f "$FFPROBE_BIN" ]]; then
+  cp "$FFPROBE_BIN" "$RUNTIME_BIN_DIR/$(basename "$FFPROBE_BIN")"
+  echo "[prepare-runtime] copied ffprobe -> $RUNTIME_BIN_DIR/$(basename "$FFPROBE_BIN")"
+else
+  echo "[prepare-runtime] ffprobe not copied. Set TENNIS_STANDALONE_FFPROBE_BIN if needed."
 fi
 
 if [[ -n "$PYTHON_BIN" && -f "$PYTHON_BIN" ]]; then

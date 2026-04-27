@@ -27,6 +27,10 @@ pub fn run() {
                 env::set_var("TENNIS_AUTO_EDITOR_FFMPEG_BIN", path);
             }
 
+            if let Some(path) = services::workspace::bundled_ffprobe_bin(&app_handle) {
+                env::set_var("TENNIS_AUTO_EDITOR_FFPROBE_BIN", path);
+            }
+
             Ok(())
         })
         .manage(Mutex::new(services::mpv::MpvController::default()))
