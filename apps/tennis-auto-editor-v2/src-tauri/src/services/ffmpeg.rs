@@ -642,9 +642,20 @@ fn build_export_filter_complex(
     parts.join(";")
 }
 
+pub fn resolved_ffmpeg_bin() -> String {
+    env::var("TENNIS_AUTO_EDITOR_FFMPEG_BIN").unwrap_or_else(|_| "ffmpeg".to_string())
+}
+
+pub fn ffmpeg_is_available() -> bool {
+    Command::new(resolved_ffmpeg_bin())
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 pub fn extract_video_thumbnail_data_url(input_path: &Path, seek_sec: f64) -> Result<String, String> {
-    let ffmpeg_binary =
-        env::var("TENNIS_AUTO_EDITOR_FFMPEG_BIN").unwrap_or_else(|_| "ffmpeg".to_string());
+    let ffmpeg_binary = resolved_ffmpeg_bin();
 
     let args = vec![
         "-y".to_string(),
@@ -692,8 +703,7 @@ pub fn extract_video_thumbnail_data_url(input_path: &Path, seek_sec: f64) -> Res
 }
 
 fn run_ffmpeg(args: &[String]) -> Result<(), String> {
-    let ffmpeg_binary =
-        env::var("TENNIS_AUTO_EDITOR_FFMPEG_BIN").unwrap_or_else(|_| "ffmpeg".to_string());
+    let ffmpeg_binary = resolved_ffmpeg_bin();
 
     let output = Command::new(&ffmpeg_binary)
         .args(args)
@@ -723,8 +733,7 @@ fn run_ffmpeg_with_progress<F>(
 where
     F: FnMut(f64),
 {
-    let ffmpeg_binary =
-        env::var("TENNIS_AUTO_EDITOR_FFMPEG_BIN").unwrap_or_else(|_| "ffmpeg".to_string());
+    let ffmpeg_binary = resolved_ffmpeg_bin();
 
     let mut full_args = vec![
         "-progress".to_string(),

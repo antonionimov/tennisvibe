@@ -135,7 +135,7 @@ fn main() -> Result<(), String> {
         &clip_labels,
         probe_info.fps,
         probe_info.has_audio,
-        ffmpeg::ExportSettings::new(ffmpeg::ExportResolution::P720, ffmpeg::ExportFormat::Mp4),
+        ffmpeg::ExportSettings::new(ffmpeg::ExportProfile::Fast, ffmpeg::ExportFormat::Mp4, false),
     )?;
 
     let output_size = fs::metadata(&output_path)

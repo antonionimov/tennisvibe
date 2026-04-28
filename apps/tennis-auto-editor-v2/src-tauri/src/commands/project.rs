@@ -5,20 +5,19 @@ use crate::{
         HardwareExportSupportRecord, PointAnnotationDocumentRecord, PointAnnotationRecord,
         PrepareAutomaticHighlightsResult, ProbeRecord, ProjectDetail, ProjectRecord,
         ProxyGenerationResult, ProxyProgressEvent, ReviewDecisionRecord, ReviewResultRecord,
-        ReviewSaveResult, ReviewSummaryRecord,
+        ReviewSaveResult, ReviewSummaryRecord, RuntimeCapabilitiesRecord,
     },
-    services::{ffmpeg, mpv::MpvController, probe, workspace},
+    services::{analyzer, ffmpeg, mpv::MpvController, probe, workspace},
 };
 use chrono::{Local, Utc};
 use serde::Deserialize;
 use std::{
     fs,
-    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::Mutex,
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use url::Url;
 use uuid::Uuid;
 
 #[tauri::command]
@@ -90,6 +89,70 @@ pub fn extract_video_thumbnail(video_path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn get_hardware_export_support() -> Result<HardwareExportSupportRecord, String> {
     Ok(ffmpeg::hardware_export_support())
+}
+
+#[tauri::command]
+pub fn get_runtime_capabilities(app: AppHandle) -> Result<RuntimeCapabilitiesRecord, String> {
+    let export_directory = workspace::exports_root(&app)?.display().to_string();
+    let runtime_root = workspace::bundled_runtime_root(&app);
+    let ffmpeg_bin = ffmpeg::resolved_ffmpeg_bin();
+    let ffprobe_bin = probe::resolved_ffprobe_bin();
+    let ffmpeg_available = ffmpeg::ffmpeg_is_available();
+    let ffprobe_available = probe::ffprobe_is_available();
+
+    Ok(RuntimeCapabilitiesRecord {
+        platform: std::env::consts::OS.to_string(),
+        is_mobile: cfg!(mobile),
+        supports_save_dialog: !cfg!(target_os = "android"),
+        prefers_generated_export_path: cfg!(target_os = "android"),
+        export_directory,
+        import_mode: if cfg!(target_os = "android") {
+            "uri-or-path".to_string()
+        } else {
+            "path".to_string()
+        },
+        analyzer_backend: "rust-audio-mvp".to_string(),
+        runtime_root: runtime_root.as_ref().map(|path| path.display().to_string()),
+        runtime_source: if runtime_root.is_some() {
+            if cfg!(target_os = "android") {
+                "bundled-mobile-runtime".to_string()
+            } else {
+                "bundled-runtime".to_string()
+            }
+        } else {
+            "system-path".to_string()
+        },
+        ffmpeg_bin,
+        ffprobe_bin,
+        ffmpeg_available,
+        ffprobe_available,
+        media_pipeline_ready: ffmpeg_available && ffprobe_available,
+    })
+}
+
+#[tauri::command]
+pub fn suggest_export_path(
+    app: AppHandle,
+    default_file_name: String,
+) -> Result<String, String> {
+    let exports_dir = workspace::exports_root(&app)?;
+    let file_name = sanitize_export_file_name(&default_file_name);
+    Ok(exports_dir.join(file_name).display().to_string())
+}
+
+#[tauri::command]
+pub fn resolve_imported_app_path(app: AppHandle, relative_path: String) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("无法获取 app data 目录: {error}"))?;
+
+    let safe_relative = PathBuf::from(&relative_path);
+    if safe_relative.is_absolute() || relative_path.contains("..") {
+        return Err(format!("导入目标路径不安全: {relative_path}"));
+    }
+
+    Ok(app_data_dir.join(safe_relative).display().to_string())
 }
 
 #[tauri::command]
@@ -315,135 +378,51 @@ fn run_analysis_sync(
         ));
     }
 
-    emit_analysis_progress(&app, &project_id, "queued", 0, "准备启动 Python analyzer")?;
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let python_root = resolve_python_root(&manifest_dir)?;
-    let analyzer_script = python_root.join("analyzer/main.py");
-    let vendor_dir = python_root.join("vendor");
-
-    if !analyzer_script.exists() {
-        return Err(format!(
-            "未找到 analyzer 脚本: {}",
-            analyzer_script.display()
-        ));
-    }
-
-    let python_path = std::env::join_paths([vendor_dir.as_os_str(), python_root.as_os_str()])
-        .map_err(|error| format!("构造 PYTHONPATH 失败: {error}"))?;
-
-    let visual_mode = visual_bootstrap_mode
-        .unwrap_or_else(|| "off".to_string())
-        .to_lowercase();
-    let selected_ball_model = resolve_ball_model_choice(&manifest_dir, ball_model_choice)?;
+    let sensitivity = sensitivity.clamp(0.1, 1.0);
     let analysis_media_path = if proxy_path.exists() {
-        proxy_path
+        proxy_path.clone()
     } else {
         source_video_path.clone()
     };
 
-    let python_bin = resolve_python_bin();
-    let mut command = Command::new(&python_bin);
-    command
-        .arg("-m")
-        .arg("analyzer.main")
-        .arg("--project-dir")
-        .arg(&project_dir)
-        .arg("--proxy-path")
-        .arg(&analysis_media_path)
-        .arg("--audio-path")
-        .arg(&audio_path)
-        .arg("--sensitivity")
-        .arg(format!("{:.3}", sensitivity.clamp(0.1, 1.0)))
-        .current_dir(&python_root)
-        .env("PYTHONPATH", python_path);
-
-    if let Ok(python_home) = std::env::var("TENNIS_AUTO_EDITOR_PYTHONHOME") {
-        command.env("PYTHONHOME", python_home);
+    if visual_bootstrap_mode.as_deref().unwrap_or("off") != "off" || ball_model_choice.is_some() {
+        emit_analysis_progress(
+            &app,
+            &project_id,
+            "visual_bootstrap_skipped",
+            2,
+            "当前使用 Rust MVP analyzer，已跳过 Python 视觉 bootstrap 参数",
+        )?;
     }
 
-    if let Some(ball_model_path) = selected_ball_model {
-        command.env("TENNIS_VISION_BALL_MODEL", ball_model_path);
-    }
+    emit_analysis_progress(&app, &project_id, "queued", 0, "准备启动 Rust analyzer")?;
+    emit_analysis_progress(&app, &project_id, "audio_features", 20, "正在提取音频能量与瞬态特征")?;
 
-    match visual_mode.as_str() {
-        "safe" => {
-            command
-                .env("TENNIS_VISION_ENABLE", "1")
-                .env("TENNIS_VISION_FORCE", "0")
-                .env("TENNIS_VISION_FRAME_STRIDE", "20")
-                .env("TENNIS_VISION_IMGSZ", "320")
-                .env("TENNIS_VISION_CONFIDENCE", "0.22")
-                .env("TENNIS_VISION_MAX_SAFE_DURATION_SEC", "120");
-        }
-        "force" => {
-            command
-                .env("TENNIS_VISION_ENABLE", "1")
-                .env("TENNIS_VISION_FORCE", "1")
-                .env("TENNIS_VISION_FRAME_STRIDE", "10")
-                .env("TENNIS_VISION_IMGSZ", "416")
-                .env("TENNIS_VISION_CONFIDENCE", "0.20")
-                .env("TENNIS_VISION_MAX_SAFE_DURATION_SEC", "120");
-        }
-        _ => {
-            command
-                .env("TENNIS_VISION_ENABLE", "0")
-                .env("TENNIS_VISION_FORCE", "0");
-        }
-    }
+    let analyzer_output = analyzer::analyze_audio_project(
+        &project,
+        &project_dir,
+        &analysis_media_path,
+        &audio_path,
+        sensitivity,
+    )?;
 
-    let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("启动 python analyzer 失败（{}）: {error}", python_bin.display()))?;
+    emit_analysis_progress(
+        &app,
+        &project_id,
+        "segment_logic",
+        82,
+        &format!("已检测到 {} 个疑似击球声事件，正在生成回合片段", analyzer_output.hit_count),
+    )?;
 
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "无法读取 python analyzer stdout".to_string())?;
-    let mut stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "无法读取 python analyzer stderr".to_string())?;
+    workspace::write_json(&analysis_result_path, &analyzer_output.result)?;
 
-    let reader = BufReader::new(stdout);
-    for line_result in reader.lines() {
-        let line = line_result.map_err(|error| format!("读取 analyzer 输出失败: {error}"))?;
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        if let Ok(progress) = serde_json::from_str::<AnalyzerProgressLine>(&line) {
-            if progress.kind.as_deref() == Some("progress") {
-                emit_analysis_progress(
-                    &app,
-                    &project_id,
-                    &progress.stage,
-                    progress.percent,
-                    &progress.message,
-                )?;
-            }
-        }
-    }
-
-    let status = child
-        .wait()
-        .map_err(|error| format!("等待 python analyzer 结束失败: {error}"))?;
-
-    let mut stderr_output = String::new();
-    stderr
-        .read_to_string(&mut stderr_output)
-        .map_err(|error| format!("读取 python analyzer stderr 失败: {error}"))?;
-
-    if !status.success() {
-        let detail = stderr_output.trim();
-        return Err(if detail.is_empty() {
-            format!("python analyzer 执行失败，退出码: {status}")
-        } else {
-            format!("python analyzer 执行失败: {detail}")
-        });
-    }
+    emit_analysis_progress(
+        &app,
+        &project_id,
+        "done",
+        100,
+        &format!("分析完成，已输出 {} 个候选片段", analyzer_output.result.summary.segment_count),
+    )?;
 
     let analysis_result: AnalysisResultRecord = workspace::read_json(&analysis_result_path)?;
 
@@ -1022,7 +1001,18 @@ fn emit_export_progress(
 }
 
 fn normalize_video_path(raw_path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(raw_path);
+    let path = if raw_path.starts_with("file://") {
+        let url = Url::parse(raw_path)
+            .map_err(|error| format!("无法解析文件 URI {raw_path}: {error}"))?;
+        url.to_file_path()
+            .map_err(|_| format!("无法转换文件 URI 为本地路径: {raw_path}"))?
+    } else if raw_path.contains("://") {
+        return Err(format!(
+            "当前版本暂不支持直接处理此 URI：{raw_path}。Android 版本下一步需要补上 URI 导入到应用沙盒的流程。"
+        ));
+    } else {
+        PathBuf::from(raw_path)
+    };
 
     if !path.exists() {
         return Err(format!("视频文件不存在: {raw_path}"));
@@ -1034,6 +1024,23 @@ fn normalize_video_path(raw_path: &str) -> Result<PathBuf, String> {
 
     path.canonicalize()
         .map_err(|error| format!("无法解析视频文件路径 {raw_path}: {error}"))
+}
+
+fn sanitize_export_file_name(raw_name: &str) -> String {
+    let trimmed = raw_name.trim();
+    let candidate = if trimmed.is_empty() {
+        "tennis-highlights.mp4"
+    } else {
+        trimmed
+    };
+
+    candidate
+        .chars()
+        .map(|ch| match ch {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => ch,
+        })
+        .collect()
 }
 
 fn review_result_path(project_dir: &Path) -> PathBuf {

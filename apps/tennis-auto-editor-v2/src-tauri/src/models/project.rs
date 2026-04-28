@@ -202,6 +202,24 @@ pub struct HardwareExportSupportRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeCapabilitiesRecord {
+    pub platform: String,
+    pub is_mobile: bool,
+    pub supports_save_dialog: bool,
+    pub prefers_generated_export_path: bool,
+    pub export_directory: String,
+    pub import_mode: String,
+    pub analyzer_backend: String,
+    pub runtime_root: Option<String>,
+    pub runtime_source: String,
+    pub ffmpeg_bin: String,
+    pub ffprobe_bin: String,
+    pub ffmpeg_available: bool,
+    pub ffprobe_available: bool,
+    pub media_pipeline_ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointAnnotationRecord {
     pub point_id: String,
     pub start_sec: f64,

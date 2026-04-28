@@ -5,6 +5,8 @@ import {
   extractVideoThumbnail,
   exportReviewedVideo,
   getHardwareExportSupport,
+  getRuntimeCapabilities,
+  importVideoIntoAppStorage,
   listenToAnalysisProgress,
   listenToAutoflowProgress,
   listenToExportProgress,
@@ -12,6 +14,7 @@ import {
   prepareAutomaticHighlights,
   selectExportPath,
   selectVideoFile,
+  suggestExportPath,
 } from './lib/tauriApi'
 import type {
   ExportFormat,
@@ -19,6 +22,7 @@ import type {
   ExportVideoResult,
   HardwareExportSupport,
   PrepareAutomaticHighlightsResult,
+  RuntimeCapabilities,
 } from './types'
 
 type AppPhase = 'idle' | 'ready' | 'preparing' | 'prepared' | 'exporting' | 'done' | 'failed'
@@ -356,7 +360,28 @@ function App() {
   const [previewStageDurationSec, setPreviewStageDurationSec] = useState<number | null>(null)
   const [exportProgressSamples, setExportProgressSamples] = useState<ExportProgressSample[]>([])
   const [hardwareSupport, setHardwareSupport] = useState<HardwareExportSupport | null>(null)
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<RuntimeCapabilities | null>(null)
   const previewRequestIdRef = useRef(0)
+
+  const runtimeIssue = useMemo(() => {
+    if (!runtimeCapabilities) {
+      return null
+    }
+
+    if (!runtimeCapabilities.ffprobe_available && !runtimeCapabilities.ffmpeg_available) {
+      return '当前运行环境缺少 ffprobe 和 ffmpeg，Android 版本还不能真正开始处理视频。'
+    }
+
+    if (!runtimeCapabilities.ffprobe_available) {
+      return '当前运行环境缺少 ffprobe，视频探测会先失败。'
+    }
+
+    if (!runtimeCapabilities.ffmpeg_available) {
+      return '当前运行环境缺少 ffmpeg，音频提取和导出会失败。'
+    }
+
+    return null
+  }, [runtimeCapabilities])
 
   const selectedFileName = useMemo(
     () => (selectedVideoPath ? getFileName(selectedVideoPath) : 'MATCH_RECORDING_2024.mp4'),
@@ -421,6 +446,14 @@ function App() {
   }, [phase])
 
   useEffect(() => {
+    void getRuntimeCapabilities()
+      .then((capabilities) => {
+        setRuntimeCapabilities(capabilities)
+      })
+      .catch(() => {
+        setRuntimeCapabilities(null)
+      })
+
     void getHardwareExportSupport()
       .then((support) => {
         setHardwareSupport(support)
@@ -522,7 +555,11 @@ function App() {
         return
       }
 
-      setSelectedVideoPath(path)
+      const resolvedPath = runtimeCapabilities?.import_mode === 'uri-or-path' && path.includes('://')
+        ? await importVideoIntoAppStorage(path)
+        : path
+
+      setSelectedVideoPath(resolvedPath)
       setPrepareResult(null)
       setExportResult(null)
       setSavedPath(null)
@@ -542,9 +579,9 @@ function App() {
       const requestId = previewRequestIdRef.current + 1
       previewRequestIdRef.current = requestId
 
-      void captureVideoFrame(path)
+      void captureVideoFrame(resolvedPath)
         .catch(async () => {
-          return await extractVideoThumbnail(path)
+          return await extractVideoThumbnail(resolvedPath)
         })
         .then((preview) => {
           if (previewRequestIdRef.current === requestId) {
@@ -563,7 +600,11 @@ function App() {
   }
 
   const handleStartProcessing = async () => {
-    if (!selectedVideoPath) {
+    if (!selectedVideoPath || !runtimeCapabilities?.media_pipeline_ready) {
+      if (!runtimeCapabilities?.media_pipeline_ready) {
+        setError(runtimeIssue ?? '当前媒体处理运行时还没准备好，暂时无法开始自动剪辑')
+        setPhase('failed')
+      }
       return
     }
 
@@ -600,7 +641,10 @@ function App() {
       return
     }
 
-    const destinationPath = await selectExportPath(buildDefaultExportFileName(selectedFileName, format), format)
+    const defaultFileName = buildDefaultExportFileName(selectedFileName, format)
+    const destinationPath = runtimeCapabilities?.prefers_generated_export_path
+      ? await suggestExportPath(defaultFileName)
+      : await selectExportPath(defaultFileName, format)
     if (!destinationPath) {
       return
     }
@@ -792,10 +836,10 @@ function App() {
                   ))}
                 </div>
                 <button
-                  disabled={!canStart}
+                  disabled={!canStart || !runtimeCapabilities?.media_pipeline_ready}
                   onClick={() => void handleStartProcessing()}
                   className={`active-scale group relative flex w-full max-w-md items-center justify-center overflow-hidden rounded-2xl py-4 text-lg font-bold transition-all duration-500 ${
-                    canStart
+                    canStart && runtimeCapabilities?.media_pipeline_ready
                       ? 'bg-[#1D1D1F] text-white hover:-translate-y-1 hover:bg-black hover:shadow-lg'
                       : 'cursor-not-allowed bg-gray-100 text-gray-300'
                   }`}
@@ -805,6 +849,26 @@ function App() {
                   AI 智能剪辑
                   <ChevronRightIcon className="ml-2 h-4 w-4 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
                 </button>
+                {runtimeCapabilities ? (
+                  <div className="mt-5 w-full max-w-md rounded-2xl border border-gray-100 bg-gray-50 px-4 py-4 text-left text-xs leading-5 text-gray-500">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-white px-2 py-1 font-bold text-gray-700">{runtimeCapabilities.platform}</span>
+                      <span className="rounded-full bg-white px-2 py-1 font-bold text-gray-700">{runtimeCapabilities.runtime_source}</span>
+                      <span className={`rounded-full px-2 py-1 font-bold ${runtimeCapabilities.media_pipeline_ready ? 'bg-[#F2FFD0] text-[#5E7A00]' : 'bg-[#FFF0EE] text-[#C0392B]'}`}>
+                        {runtimeCapabilities.media_pipeline_ready ? '媒体链已就绪' : '媒体链未就绪'}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1">
+                      <p>Analyzer: {runtimeCapabilities.analyzer_backend}</p>
+                      <p>ffprobe: {runtimeCapabilities.ffprobe_available ? 'OK' : '缺失'} · {runtimeCapabilities.ffprobe_bin}</p>
+                      <p>ffmpeg: {runtimeCapabilities.ffmpeg_available ? 'OK' : '缺失'} · {runtimeCapabilities.ffmpeg_bin}</p>
+                      <p>导出目录: {runtimeCapabilities.export_directory}</p>
+                      {runtimeCapabilities.runtime_root ? <p>runtime: {runtimeCapabilities.runtime_root}</p> : null}
+                      {runtimeCapabilities.is_mobile ? <p>移动端说明：导出默认先保存到 app 内部目录，后续还需要补公开分享/相册链路。</p> : null}
+                    </div>
+                  </div>
+                ) : null}
+                {runtimeIssue ? <p className="mt-4 text-center text-sm font-medium text-[#C0392B]">{runtimeIssue}</p> : null}
                 {error ? <p className="mt-5 text-center text-sm font-medium text-[#C0392B]">{error}</p> : null}
               </div>
             )}

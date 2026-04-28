@@ -131,3 +131,20 @@ export interface HardwareExportSupport {
   summary: string
   encoders: HardwareEncoderSupport[]
 }
+
+export interface RuntimeCapabilities {
+  platform: string
+  is_mobile: boolean
+  supports_save_dialog: boolean
+  prefers_generated_export_path: boolean
+  export_directory: string
+  import_mode: string
+  analyzer_backend: string
+  runtime_root: string | null
+  runtime_source: string
+  ffmpeg_bin: string
+  ffprobe_bin: string
+  ffmpeg_available: boolean
+  ffprobe_available: boolean
+  media_pipeline_ready: boolean
+}

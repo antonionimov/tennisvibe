@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { basename } from '@tauri-apps/api/path'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import { copyFile, exists, mkdir, BaseDirectory } from '@tauri-apps/plugin-fs'
 import type {
   AnalysisProgressEvent,
   AutoflowProgressEvent,
@@ -12,9 +14,11 @@ import type {
   HardwareExportSupport,
   PrepareAutomaticHighlightsResult,
   ProxyProgressEvent,
+  RuntimeCapabilities,
 } from '../types'
 
 const SUPPORTED_VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm']
+const IMPORTS_DIRECTORY = 'imports'
 
 function ensureTauriRuntime() {
   if (typeof window === 'undefined') {
@@ -73,6 +77,32 @@ export async function extractVideoThumbnail(videoPath: string): Promise<string> 
 
 export async function getHardwareExportSupport(): Promise<HardwareExportSupport> {
   return tauriInvoke<HardwareExportSupport>('get_hardware_export_support')
+}
+
+export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
+  return tauriInvoke<RuntimeCapabilities>('get_runtime_capabilities')
+}
+
+export async function suggestExportPath(defaultFileName: string): Promise<string> {
+  return tauriInvoke<string>('suggest_export_path', { defaultFileName })
+}
+
+export async function importVideoIntoAppStorage(sourcePath: string): Promise<string> {
+  const importId = String(Date.now())
+  const sourceName = (await basename(sourcePath).catch(() => null)) || `match-${importId}.mp4`
+  const sanitizedName = sourceName.replace(/[\\/:*?"<>|]/g, '_')
+
+  const importsDirExists = await exists(IMPORTS_DIRECTORY, { baseDir: BaseDirectory.AppData })
+  if (!importsDirExists) {
+    await mkdir(IMPORTS_DIRECTORY, { baseDir: BaseDirectory.AppData, recursive: true })
+  }
+
+  const relativeImportDir = `${IMPORTS_DIRECTORY}/${importId}`
+  await mkdir(relativeImportDir, { baseDir: BaseDirectory.AppData, recursive: true })
+
+  const relativeTargetPath = `${relativeImportDir}/${sanitizedName}`
+  await copyFile(sourcePath, relativeTargetPath, { toPathBaseDir: BaseDirectory.AppData })
+  return tauriInvoke<string>('resolve_imported_app_path', { relativePath: relativeTargetPath })
 }
 
 export async function exportReviewedVideo(

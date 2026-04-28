@@ -23,9 +23,20 @@ struct FfprobeFormat {
     duration: Option<String>,
 }
 
+pub fn resolved_ffprobe_bin() -> String {
+    env::var("TENNIS_AUTO_EDITOR_FFPROBE_BIN").unwrap_or_else(|_| "ffprobe".to_string())
+}
+
+pub fn ffprobe_is_available() -> bool {
+    Command::new(resolved_ffprobe_bin())
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 pub fn probe_video(video_path: &Path) -> Result<ProbeRecord, String> {
-    let ffprobe_binary =
-        env::var("TENNIS_AUTO_EDITOR_FFPROBE_BIN").unwrap_or_else(|_| "ffprobe".to_string());
+    let ffprobe_binary = resolved_ffprobe_bin();
 
     let output = Command::new(&ffprobe_binary)
         .args([

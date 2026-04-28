@@ -11,6 +11,10 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            if let Err(error) = services::workspace::prepare_mobile_runtime(&app_handle) {
+                eprintln!("[tennis-auto-editor-v2] prepare mobile runtime failed: {error}");
+            }
+
             if let Some(path) = services::workspace::bundled_python_root(&app_handle) {
                 env::set_var("TENNIS_AUTO_EDITOR_PYTHON_ROOT", path);
             }
@@ -35,12 +39,14 @@ pub fn run() {
         })
         .manage(Mutex::new(services::mpv::MpvController::default()))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             commands::project::create_project,
             commands::project::get_project,
             commands::project::get_latest_project,
             commands::project::extract_video_thumbnail,
             commands::project::get_hardware_export_support,
+            commands::project::get_runtime_capabilities,
             commands::project::generate_proxy,
             commands::project::run_analysis,
             commands::project::get_analysis_result,
@@ -48,6 +54,8 @@ pub fn run() {
             commands::project::save_review,
             commands::project::export_reviewed_video,
             commands::project::prepare_automatic_highlights,
+            commands::project::suggest_export_path,
+            commands::project::resolve_imported_app_path,
             commands::project::copy_file_to_path,
         ])
         .run(tauri::generate_context!())
