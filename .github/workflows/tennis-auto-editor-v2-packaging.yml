@@ -93,8 +93,17 @@ jobs:
       - name: Build standalone bundle
         run: |
           export TENNIS_VENDOR_PYTHON_BIN=python
-          export TENNIS_STANDALONE_FFMPEG_BIN="$(command -v ffmpeg || command -v ffmpeg.exe)"
-          export TENNIS_STANDALONE_FFPROBE_BIN="$(command -v ffprobe || command -v ffprobe.exe)"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            FFMPEG_RUNTIME_ARCHIVE="$RUNNER_TEMP/tennisvibe-ffmpeg-runtime-win64.zip"
+            FFMPEG_RUNTIME_DIR="$RUNNER_TEMP/tennisvibe-ffmpeg-runtime-win64"
+            curl -L --fail --output "$FFMPEG_RUNTIME_ARCHIVE" "https://github.com/antonionimov/tennisvibe/releases/download/ffmpeg-runtime-win64-20260429/tennisvibe-ffmpeg-runtime-win64.zip"
+            python -m zipfile -e "$FFMPEG_RUNTIME_ARCHIVE" "$RUNNER_TEMP"
+            export TENNIS_STANDALONE_FFMPEG_BIN="$FFMPEG_RUNTIME_DIR/bin/ffmpeg.exe"
+            export TENNIS_STANDALONE_FFPROBE_BIN="$FFMPEG_RUNTIME_DIR/bin/ffprobe.exe"
+          else
+            export TENNIS_STANDALONE_FFMPEG_BIN="$(command -v ffmpeg || command -v ffmpeg.exe)"
+            export TENNIS_STANDALONE_FFPROBE_BIN="$(command -v ffprobe || command -v ffprobe.exe)"
+          fi
           echo "Using ffmpeg at: $TENNIS_STANDALONE_FFMPEG_BIN"
           echo "Using ffprobe at: $TENNIS_STANDALONE_FFPROBE_BIN"
           ${{ matrix.bundle_command }}

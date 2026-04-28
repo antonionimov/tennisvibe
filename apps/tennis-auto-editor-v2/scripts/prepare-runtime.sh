@@ -13,6 +13,61 @@ FFPROBE_BIN=${TENNIS_STANDALONE_FFPROBE_BIN:-$(command -v ffprobe || true)}
 PYTHON_BIN=${TENNIS_STANDALONE_PYTHON_BIN:-}
 RUNTIME_PROFILE=${TENNIS_STANDALONE_RUNTIME_PROFILE:-audio-only}
 
+is_windows_host() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_windows_real_binary() {
+  local tool_name=$1
+  local candidate=$2
+
+  if [[ -z "$candidate" ]]; then
+    return 0
+  fi
+
+  local normalized=${candidate//\\//}
+  if [[ "$normalized" == */Chocolatey/bin/* ]]; then
+    local choco_lib="$(cd "$(dirname "$normalized")/../lib" 2>/dev/null && pwd || true)"
+    if [[ -n "$choco_lib" ]]; then
+      local real_candidate
+      real_candidate=$(find "$choco_lib" -type f \( -iname "$tool_name.exe" -o -iname "$tool_name" \) | grep -vi '/bin/' | head -n 1 || true)
+      if [[ -n "$real_candidate" ]]; then
+        echo "$real_candidate"
+        return 0
+      fi
+    fi
+  fi
+
+  echo "$candidate"
+}
+
+copy_runtime_binary() {
+  local label=$1
+  local src=$2
+  local default_dest_name=$3
+
+  if [[ -z "$src" || ! -f "$src" ]]; then
+    echo "[prepare-runtime] $label not copied. Set TENNIS_STANDALONE_${label^^}_BIN if needed."
+    return 0
+  fi
+
+  local dest_name=$default_dest_name
+  if is_windows_host; then
+    src=$(resolve_windows_real_binary "$label" "$src")
+    if [[ ! -f "$src" ]]; then
+      echo "[prepare-runtime] resolved $label binary missing after shim resolution: $src" >&2
+      exit 1
+    fi
+    dest_name="$label.exe"
+  fi
+
+  cp "$src" "$RUNTIME_BIN_DIR/$dest_name"
+  echo "[prepare-runtime] copied $label -> $RUNTIME_BIN_DIR/$dest_name (from $src)"
+}
+
 mkdir -p "$RUNTIME_BIN_DIR"
 rm -rf "$RUNTIME_PYTHON_DIR"
 mkdir -p "$RUNTIME_VENDOR_DIR"
@@ -92,19 +147,8 @@ else
   rm -rf "$RUNTIME_PYTHON_DIR/models"
 fi
 
-if [[ -n "$FFMPEG_BIN" && -f "$FFMPEG_BIN" ]]; then
-  cp "$FFMPEG_BIN" "$RUNTIME_BIN_DIR/$(basename "$FFMPEG_BIN")"
-  echo "[prepare-runtime] copied ffmpeg -> $RUNTIME_BIN_DIR/$(basename "$FFMPEG_BIN")"
-else
-  echo "[prepare-runtime] ffmpeg not copied. Set TENNIS_STANDALONE_FFMPEG_BIN if needed."
-fi
-
-if [[ -n "$FFPROBE_BIN" && -f "$FFPROBE_BIN" ]]; then
-  cp "$FFPROBE_BIN" "$RUNTIME_BIN_DIR/$(basename "$FFPROBE_BIN")"
-  echo "[prepare-runtime] copied ffprobe -> $RUNTIME_BIN_DIR/$(basename "$FFPROBE_BIN")"
-else
-  echo "[prepare-runtime] ffprobe not copied. Set TENNIS_STANDALONE_FFPROBE_BIN if needed."
-fi
+copy_runtime_binary "ffmpeg" "$FFMPEG_BIN" "$(basename "$FFMPEG_BIN")"
+copy_runtime_binary "ffprobe" "$FFPROBE_BIN" "$(basename "$FFPROBE_BIN")"
 
 if [[ -n "$PYTHON_BIN" && -f "$PYTHON_BIN" ]]; then
   cp "$PYTHON_BIN" "$RUNTIME_BIN_DIR/$(basename "$PYTHON_BIN")"
